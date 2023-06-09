@@ -23,18 +23,20 @@ bool isInsideCube(const vec3 p, float e) { return abs(p.x) < e && abs(p.y) < e &
 
 
 float get_dist(vec3 ro, vec3 rd) {
-	float dist = 0;
+	float dist = 0.01;
 	vec4 acc = vec4(0);
 
 	while (dist < 2. && acc.a < 1) {
 		vec3 p = ro + rd * dist;
 		p = p * 0.5 + 0.5;
 
+		float level = dist * 0.1;
+
 		vec4 v = textureLod(voxels, p, 0);
 
-		acc += v;
+		acc += v.a;
 
-		dist += VOXEL_SIZE;
+		dist += VOXEL_SIZE * max(0.05, pow(level, 2));
 	}
 
 	return dist;
@@ -72,7 +74,7 @@ vec4 get_specular(vec3 ro, vec3 rd) {
 		float f = 1. - acc.a;
 		acc.rgb += v.rgb * v.a * f;
 		acc.a += v.a * f;
-		dist += VOXEL_SIZE * (1.0f + 0.125f * level);
+		dist += VOXEL_SIZE * (0.125f + 0.125f * level);
 	}
 
 	return acc;
@@ -83,38 +85,42 @@ vec4 get_shadow(vec3 ro, vec3 rd, float shadow_dist) {
 	float acc = 0;
 	float dist = VOXEL_SIZE * 3;
 
-	while (dist <= shadow_dist) {
+	while (dist <= shadow_dist && acc < 1) {
 		vec3 p = ro + rd * dist;
 		p = p * 0.5 + 0.5;
 
-		float l = dist;
+		float l = pow(dist,2);
 
-		float v1 = textureLod(voxels, p, 1 + 0.75 * l).a;
+		float v1 = 0.062 * textureLod(voxels, p, 1 + 0.75 * l).a;
+		float v2 = 0.136 * textureLod(voxels, p, 4.5 * l).a;
 
-		acc += (1 - acc) * v1;
+		float v = v1 + v2;
+
+		acc += (1 - acc) * v;
 
 		dist += 0.9 * VOXEL_SIZE * (1 + 0.05 * l);
 	}
 
-	return vec4(1 - acc);
+	return vec4(1 - pow(smoothstep(0, 1, acc * 1.4), 1.0 / 1.4));
 }
 
 
 void main() {
 	vec3 rd = normalize(global_pos + vertex_pos - camera_pos);
-	vec3 ro = camera_pos - global_pos + rd * max(0, length(camera_pos) - 1.1);
+	vec3 ro = camera_pos - global_pos + rd * (max(0, length(camera_pos) - 1.1) + 0);
 
 	vec4 diffuse = get_diffuse(camera_pos,rd, 0.01);
 	vec4 specular = get_specular(ro,rd);
 
 	float dist = get_dist(ro,rd);
 
-	vec4 shadow = get_shadow(ro+rd*dist, vec3(0,1,0), 2);
+	vec4 shadow = get_shadow(ro+rd*dist, normalize(vec3(1,1,1)), 1);
 
-	gl_FragDepth = dist * 0.01;
+	//gl_FragDepth = dist * 0.01;
 
 	color = specular;// + diffuse * 0.5;
-	//color *= shadow;
+	color *= shadow;
+	//color = vec4(1-dist);
 
 	color = pow(color, vec4(1./2.2));
 }
